@@ -56,3 +56,21 @@ docker run --rm -p 8000:8000 minha-aplicacao:1.0
 ```
 
 Acesse http://127.0.0.1:8000/hello.
+
+## Pipeline do GitHub Actions
+
+O workflow em `.github/workflows/docker.yml` e executado em pushes para `main`.
+Ele constroi a imagem, testa o endpoint `/hello` em um container e publica a tag
+`1.0` no Docker Hub.
+
+Antes do primeiro push, configure estes secrets no repositorio GitHub em
+`Settings > Secrets and variables > Actions`:
+
+- `DOCKERHUB_USERNAME`: seu usuario do Docker Hub.
+- `DOCKERHUB_TOKEN`: um access token do Docker Hub, em vez da senha.
+
+A imagem publicada tera o formato:
+
+```text
+SEU_USUARIO/minha-aplicacao:1.0
+```
