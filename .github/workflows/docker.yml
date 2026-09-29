@@ -31,7 +31,16 @@ jobs:
             --publish 8000:8000 \
             "$IMAGE_NAME:$IMAGE_TAG"
           trap 'docker rm --force minha-aplicacao-ci >/dev/null 2>&1 || true' EXIT
-          curl --fail --retry 10 --retry-delay 1 http://127.0.0.1:8000/hello
+          for attempt in {1..15}; do
+            if curl --fail --silent --show-error http://127.0.0.1:8000/hello; then
+              exit 0
+            fi
+            echo "Aguardando a aplicacao iniciar (tentativa $attempt/15)..."
+            sleep 1
+          done
+          echo "A aplicacao nao respondeu. Logs do container:"
+          docker logs minha-aplicacao-ci
+          exit 1
 
       - name: Autenticar no Docker Hub
         uses: docker/login-action@v3
