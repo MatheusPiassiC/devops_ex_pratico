@@ -1,0 +1,40 @@
+name: SonarCloud
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  analise-estatica:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar o codigo
+        uses: actions/checkout@v4
+        with:
+          # O SonarCloud usa o historico para identificar o codigo novo.
+          fetch-depth: 0
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias de desenvolvimento
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Executar testes e gerar cobertura
+        run: python -m pytest --cov=app --cov-report=xml:coverage.xml
+
+      - name: Analisar no SonarCloud
+        uses: SonarSource/sonarqube-scan-action@v4
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
