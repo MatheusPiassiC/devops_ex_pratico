@@ -159,3 +159,5 @@ minha-aplicacao:${{ github.sha }}
 Por isso, ele não depende de `DOCKERHUB_USERNAME` ou `DOCKERHUB_TOKEN` e pode
 ser executado em pull requests. A publicação da imagem continua sendo
 responsabilidade do workflow `docker.yml`.
+
+Branch de demonstracao do Gitleaks.
