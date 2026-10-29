@@ -208,3 +208,38 @@ jobs:
           jq '.packages | length' sbom.spdx.json
           echo "Componentes Python (nome e versao):"
           jq -r '.packages[] | select(.externalRefs[]?.referenceLocator | tostring | startswith("pkg:pypi")) | "\(.name) \(.versionInfo)"' sbom.spdx.json | sort -u
+  publish:
+    name: publish
+    runs-on: ubuntu-latest
+    needs:
+      - gitleaks
+      - sonarcloud
+      - build-test
+      - trivy-fs
+      - trivy-image
+      - sbom
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    env:
+      IMAGE_REMOTE: ${{ secrets.DOCKERHUB_USERNAME }}/minha-aplicacao
+      IMAGE_TAG: "2.0"
+    steps:
+      - name: Baixar a imagem verificada
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+
+      - name: Carregar a imagem no Docker
+        run: docker load --input image.tar
+
+      - name: Autenticar no Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Publicar a imagem no Docker Hub
+        run: |
+          docker tag "$IMAGE_LOCAL" "$IMAGE_REMOTE:$IMAGE_TAG"
+          docker tag "$IMAGE_LOCAL" "$IMAGE_REMOTE:${{ github.sha }}"
+          docker push "$IMAGE_REMOTE:$IMAGE_TAG"
+          docker push "$IMAGE_REMOTE:${{ github.sha }}"
