@@ -11,6 +11,9 @@ permissions:
   contents: read
   pull-requests: write
 
+env:
+  IMAGE_LOCAL: minha-aplicacao:${{ github.sha }}
+
 jobs:
   gitleaks:
     name: gitleaks
@@ -51,3 +54,129 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
+
+  build-test:
+    name: build-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar o codigo
+        uses: actions/checkout@v4
+
+      - name: Construir a imagem Docker
+        run: docker build --tag "$IMAGE_LOCAL" .
+
+      - name: Verificar a imagem com o endpoint /hello
+        run: |
+          docker run --rm --detach \
+            --name minha-aplicacao-ci \
+            --publish 8000:8000 \
+            "$IMAGE_LOCAL"
+          trap 'docker rm --force minha-aplicacao-ci >/dev/null 2>&1 || true' EXIT
+          for attempt in {1..15}; do
+            if curl --fail --silent --show-error http://127.0.0.1:8000/hello; then
+              exit 0
+            fi
+            echo "Aguardando a aplicacao iniciar (tentativa $attempt/15)..."
+            sleep 1
+          done
+          echo "A aplicacao nao respondeu. Logs do container:"
+          docker logs minha-aplicacao-ci
+          exit 1
+
+      - name: Exportar a imagem para os proximos jobs
+        run: docker save "$IMAGE_LOCAL" --output image.tar
+
+      - name: Guardar a imagem como artifact temporario
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: image.tar
+          retention-days: 1
+
+  trivy-fs:
+    name: trivy-fs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar o codigo
+        uses: actions/checkout@v4
+
+      - name: Relatorio de dependencias (LOW e MEDIUM, nao bloqueia)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          severity: LOW,MEDIUM
+          format: table
+          output: trivy-fs-report.txt
+          exit-code: "0"
+
+      - name: Exibir o relatorio no log
+        if: always()
+        run: cat trivy-fs-report.txt || true
+
+      - name: Publicar o relatorio como artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-fs-report
+          path: trivy-fs-report.txt
+          if-no-files-found: warn
+
+      - name: Bloqueio de dependencias (CRITICAL e HIGH com correcao)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: table
+          exit-code: "1"
+
+  trivy-image:
+    name: trivy-image
+    runs-on: ubuntu-latest
+    needs: build-test
+    steps:
+      - name: Baixar a imagem construida no job build-test
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+
+      - name: Carregar a imagem no Docker
+        run: docker load --input image.tar
+
+      - name: Relatorio da imagem (LOW e MEDIUM, nao bloqueia)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.IMAGE_LOCAL }}
+          scanners: vuln
+          severity: LOW,MEDIUM
+          format: table
+          output: trivy-image-report.txt
+          exit-code: "0"
+
+      - name: Exibir o relatorio no log
+        if: always()
+        run: cat trivy-image-report.txt || true
+
+      - name: Publicar o relatorio como artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-image-report
+          path: trivy-image-report.txt
+          if-no-files-found: warn
+
+      - name: Bloqueio da imagem (CRITICAL e HIGH com correcao)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.IMAGE_LOCAL }}
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: table
+          exit-code: "1"
