@@ -180,3 +180,31 @@ jobs:
           ignore-unfixed: true
           format: table
           exit-code: "1"
+  sbom:
+    name: sbom
+    runs-on: ubuntu-latest
+    needs: build-test
+    steps:
+      - name: Baixar a imagem construida no job build-test
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+
+      - name: Carregar a imagem no Docker
+        run: docker load --input image.tar
+
+      - name: Gerar o SBOM com Syft
+        uses: anchore/sbom-action@v0.24.3
+        with:
+          image: ${{ env.IMAGE_LOCAL }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+          artifact-name: sbom-spdx
+          upload-artifact: true
+
+      - name: Resumo do SBOM no log
+        run: |
+          echo "Total de componentes:"
+          jq '.packages | length' sbom.spdx.json
+          echo "Componentes Python (nome e versao):"
+          jq -r '.packages[] | select(.externalRefs[]?.referenceLocator | tostring | startswith("pkg:pypi")) | "\(.name) \(.versionInfo)"' sbom.spdx.json | sort -u
